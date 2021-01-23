@@ -4,19 +4,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime, date, timedelta
 
+# These tools are used to optimize option chain for further viewing.
+# TODO: make OptionChain class with methods.
+#
+#
 # parse contractSymbol date
+
+
 def parse_contractSymbol(cs, rdate=False, asdict=False):
     #     cs = 'PLTR210108C00025000'
-    ticker = cs [:-15]
+    ticker = cs[:-15]
     year = cs[-15:-13]
     month = cs[-13:-11]
     day = cs[-11:-9]
     instr_type = cs[-9]
     strike = float(cs[-8:])/1000
-    
+
     if rdate == True:
         return date(2000+int(year), int(month), int(day))
-    
+
     if asdict == True:
         return {
             'ticker': ticker,
@@ -29,11 +35,14 @@ def parse_contractSymbol(cs, rdate=False, asdict=False):
     return (ticker, year, month, day, instr_type, strike)
 
 # parse_contractSymbol('PLTR210108C00025000') # ('PLTR', '21', '01', '08', 'C', 25.0)
-# parse_contractSymbol('PLTR210108C00025000', rdate=True) # 
+# parse_contractSymbol('PLTR210108C00025000', rdate=True) #
 
 # pick one the most interesting contract symbol
+
+
 def max_interest_by(df, col='openInterest'):
-    return df.loc[df.sort_values(by=[col], ascending=False)[col].idxmax()] # Series
+    # Series
+    return df.loc[df.sort_values(by=[col], ascending=False)[col].idxmax()]
 
 
 # ('2021-01-15', 30.0, 80195)
@@ -56,7 +65,7 @@ def filter_by_z_score(df, column='openInterest', mean=True, let=.5):
     """
     if mean:
         return df.loc[df[column+'Z'] > df[column+'Z'].describe()['mean']]
-    
+
     return df.loc[df[column+'Z'] >= let]
 
 
@@ -66,6 +75,7 @@ def datetime_valid(dt_str):
     except:
         return False
     return True
+
 
 def filter_by_date(df, date, column='exp'):
     """
@@ -77,7 +87,7 @@ def filter_by_date(df, date, column='exp'):
     #         raise Exception(f"Second positional argument must be datetime.date object. Received {type(date)}")
     return df[df[column] == date]
 
-    
+
 # filter_by_date(calls, exps[4])
 
 # filter_by_z_score(add_z_score(filter_by_date(calls, exps[0]), column='volume'), column='volume')
@@ -105,48 +115,76 @@ def calculate_horizon_date(time_horizon):
         return today + timedelta(365*2)
     if time_horizon == 'max':
         return today + timedelta(365*100)
-    raise Exception("time_horizon must be ['1w', '2w', '3w', '1mo', '3mo', '6mo', '1y', '2y', 'max']")
-    
-def interesting_options(op_chain, column='openInterest', time_horizon='max', filter_by_expiration=True, z_score_mean=True, z_score_let=False):
+    raise Exception(
+        "time_horizon must be ['1w', '2w', '3w', '1mo', '3mo', '6mo', '1y', '2y', 'max']")
+
+
+def interesting_options(op_chain,
+                        column='openInterest',
+                        time_horizon='max',
+                        filter_by_expiration=True,
+                        z_score_let=False,
+                        rmold=True
+                        ):
     """
     Takes a full option chain and filters based on z-score. 
-    
-    time_horizon = ['1w', '2w', '3w', '1mo', '3mo', '6mo', '1y', '2y', 'max']
+
+    @time_horizon = ['1w', '2w', '3w', '1mo', '3mo', '6mo', '1y', '2y', 'max']
+
+    @filter_by_expiration
+
+    @z_score_let = filter for rows with z_score >= z_score_let
+    If set to False, then equivalent to z_score_mean=True, which is equal to mean z-score,
+    otherwise takes a float.
+
+    z-scores:
+    1 == 1 sigma == (19.1+15)*2 = 68.2 %
+    2 == 2 sigma == (19.1+15+9.2+4.4)*2 = 95.39 %
+
+    @rmold
+    Filter out old expirations
     """
-    
+
     df = op_chain.copy()
-    
+
     # add expiration column
-    df['exp'] = df['contractSymbol'].apply(lambda cs: parse_contractSymbol(cs, rdate=True))
+    df['exp'] = df['contractSymbol'].apply(
+        lambda cs: parse_contractSymbol(cs, rdate=True))
 
     # filter by time_horizon
     horizon_date = calculate_horizon_date(time_horizon)
     df = df[df['exp'] <= horizon_date]
-    
+
+    # filter out old expirations
+    if rmold is True:
+        df = df.loc[df['exp'] >= date.today()]
+
     # get unique expirations
-    exps = df['exp'].unique() # (13,)
-    
+    exps = df['exp'].unique()  # (13,)
+
     # add stike column
-    df['strike'] = df['contractSymbol'].apply(lambda cs: parse_contractSymbol(cs, asdict=True)['strike'])
-    
+    df['strike'] = df['contractSymbol'].apply(
+        lambda cs: parse_contractSymbol(cs, asdict=True)['strike'])
+
     # set convinient dates and strikes for plot
     # df['date_strike'] = df['exp'].apply(lambda d: d.strftime('20%y-%m-%d'))
 
     def make_date_strike(cs):
         (ticker, year, month, day, instr_type, strike) = parse_contractSymbol(cs)
         return f"20{year}-{month}-{day} {strike}"
-    
-    df['date_strike'] = df['contractSymbol'].apply(lambda d: make_date_strike(d))
-    
+
+    df['date_strike'] = df['contractSymbol'].apply(
+        lambda d: make_date_strike(d))
+
     # adding z-score
     new_df = pd.DataFrame([], columns=df.columns)
     for exp in exps:
-        by_date = filter_by_date(df, exp) # filter by expiration date
+        by_date = filter_by_date(df, exp)  # filter by expiration date
         with_z = add_z_score(by_date, column=column)
-        filtered_by_z = filter_by_z_score(with_z, 
-                                          column=column, 
-                                          mean=z_score_mean, 
+        filtered_by_z = filter_by_z_score(with_z,
+                                          column=column,
+                                          mean=True if z_score_let is False else False,
                                           let=z_score_let)
         new_df = pd.concat([new_df, filtered_by_z], axis=0, ignore_index=True)
-        
+
     return new_df
