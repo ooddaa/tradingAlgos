@@ -119,7 +119,7 @@ def calculate_horizon_date(time_horizon):
         "time_horizon must be ['1w', '2w', '3w', '1mo', '3mo', '6mo', '1y', '2y', 'max']")
 
 
-def interesting_options(op_chain,
+def filter_option_chain(op_chain,
                         column='openInterest',
                         time_horizon='max',
                         filter_by_expiration=True,
@@ -146,6 +146,10 @@ def interesting_options(op_chain,
     """
 
     df = op_chain.copy()
+
+    # express volume and openInterest as percentage
+    df['volumePrc'] = df['volume'] / df['volume'].sum()
+    df['openInterestPrc'] = df['openInterest'] / df['openInterest'].sum()
 
     # add expiration column
     df['exp'] = df['contractSymbol'].apply(

@@ -26,4 +26,4 @@ def my_heatmap_plotter(x, y, z, zlabel='Open Interest',
     ax.set_yticklabels(y)
 
     ax.set_title(title)
-    fig.tight_layout()
+    # fig.tight_layout()
